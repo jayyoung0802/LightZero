@@ -143,6 +143,10 @@ cd LightZero
 pip3 install -e .
 ```
 
+Kindly note that LightZero currently supports compilation only on `Linux` and `macOS` platforms.
+We are actively working towards extending this support to the `Windows` platform. 
+Your patience during this transition is greatly appreciated.
+
 [comment]: <> (- [AlphaGo Zero]&#40;https://www.nature.com/articles/nature24270&#41; )
 
 ## Quick Start
@@ -209,6 +213,18 @@ and two MuJoCo continuous action space games: [Hopper-v3](https://github.com/ope
   <img src="assets/benchmark/ablation/lunarlander_gmz_ns.png" alt="lunarlander_gmz_ns" width="23%" height="auto" style="margin: 0 1%;">
 </p>
 
+- Below are the benchmark results of [StochasticMuZero](https://github.com/opendilab/LightZero/blob/main/lzero/policy/stochastic_muzero.py) and [MuZero](https://github.com/opendilab/LightZero/blob/main/lzero/policy/muzero.py) on [2048 environment](https://github.com/opendilab/LightZero/blob/main/zoo/game_2048/envs/game_2048_env.py) with varying levels of chance (num_chances=2 and 5).
+<p align="center">
+  <img src="assets/benchmark/main/2048/2048_stochasticmz_mz.png" alt="2048_stochasticmz_mz" width="30%" height="auto" style="margin: 0 1%;">
+  <img src="assets/benchmark/main/2048/2048_stochasticmz_mz_nc5.png" alt="mspacman_gmz_ns" width="30%" height="auto" style="margin: 0 1%;">
+</p>
+
+- Below are the benchmark results of various MCTS exploration mechanisms of [MuZero w/ SSL](https://github.com/opendilab/LightZero/blob/main/lzero/policy/muzero.py) in the [MiniGrid environment](https://github.com/opendilab/LightZero/blob/main/zoo/minigrid/envs/minigrid_lightzero_env.py).
+<p align="center">
+  <img src="assets/benchmark/main/minigrid/keycorridors3r3_exploration.png" alt="keycorridors3r3_exploration" width="30%" height="auto" style="margin: 0 1%;">
+  <img src="assets/benchmark/main/minigrid/fourrooms_exploration.png" alt="fourrooms_exploration" width="30%" height="auto" style="margin: 0 1%;">
+</p>
+
 </details>
 
 
@@ -225,6 +241,7 @@ The following are the detailed paper notes (in Chinese) of the above algorithms:
 - [EfficientZero](https://github.com/opendilab/LightZero/blob/main/assets/paper_notes/EfficientZero.pdf)
 - [SampledMuZero](https://github.com/opendilab/LightZero/blob/main/assets/paper_notes/SampledMuZero.pdf)
 - [GumbelMuZero](https://github.com/opendilab/LightZero/blob/main/assets/paper_notes/GumbelMuZero.pdf)
+- [StochasticMuZero](https://github.com/opendilab/LightZero/blob/main/assets/paper_notes/StochasticMuZero.pdf)
 - [NotationTable](https://github.com/opendilab/LightZero/blob/main/assets/paper_notes/SymbolTable.pdf)
 
 </details>
