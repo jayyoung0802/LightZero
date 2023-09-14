@@ -77,7 +77,7 @@ class LightZeroRandomPolicy(Policy):
             self._mcts_collect = self.MCTSCtree(self._cfg)
         else:
             self._mcts_collect = self.MCTSPtree(self._cfg)
-        self._collect_mcts_temperature = 1
+        self._collect_mcts_temperature = 1.0
         self.collect_epsilon = 0.0
         self.inverse_scalar_transform_handle = InverseScalarTransform(
             self._cfg.model.support_scale, self._cfg.device, self._cfg.model.categorical_distribution

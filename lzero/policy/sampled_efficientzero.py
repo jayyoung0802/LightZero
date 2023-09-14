@@ -782,7 +782,7 @@ class SampledEfficientZeroPolicy(MuZeroPolicy):
             self._mcts_collect = MCTSCtree(self._cfg)
         else:
             self._mcts_collect = MCTSPtree(self._cfg)
-        self._collect_mcts_temperature = 1
+        self._collect_mcts_temperature = 1.0
 
     def _forward_collect(
             self, data: torch.Tensor, action_mask: list = None, temperature: np.ndarray = 1, to_play=-1,

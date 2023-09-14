@@ -212,7 +212,7 @@ class AlphaZeroPolicy(Policy):
         """
         self._collect_mcts = MCTS(self._cfg.mcts)
         self._collect_model = self._model
-        self._collect_mcts_temperature = 1
+        self._collect_mcts_temperature = 1.0
 
     @torch.no_grad()
     def _forward_collect(self, envs: Dict, obs: Dict, temperature: float = 1) -> Dict[str, torch.Tensor]:

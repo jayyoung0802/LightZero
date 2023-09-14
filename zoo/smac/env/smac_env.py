@@ -22,9 +22,6 @@ from ding.utils import ENV_REGISTRY, deep_merge_dicts
 from .smac_map import get_map_params
 from .smac_action import SMACAction, distance
 from .smac_reward import SMACReward
-from PIL import Image
-import pygame
-
 
 races = {
     "R": sc_common.Random,
@@ -397,7 +394,6 @@ class SMACEnv(SC2Env, BaseEnv):
         self._episode_steps = 0
         self._final_eval_fake_reward = 0.
         old_unit_tags = set(u.tag for u in self.agents.values()).union(set(u.tag for u in self.enemies.values()))
-        to_play =  [-1 for _ in range(self.n_agents)]
         if self.just_force_restarts:
             old_unit_tags = set()
             self.just_force_restarts = False
@@ -446,78 +442,54 @@ class SMACEnv(SC2Env, BaseEnv):
 
         assert all(u.health > 0 for u in self.agents.values())
         assert all(u.health > 0 for u in self.enemies.values())
-        # print(self.get_obs().shape)
-        # print(self.get_obs())
-        obs_list = []
-        obs_dict = {}
-        obs_vec = self.get_obs()
-        for i in range(obs_vec.shape[0]):
-            key = i
-            obs_dict[key] = obs_vec[i] 
-        # print(obs_dict)
+
         if not self.two_player:
             if self.obs_alone:
                 agent_state, agent_alone_state, agent_alone_padding_state = self.get_obs()
                 return {
-                'observation':
-                {
                     'agent_state': agent_state,
                     'agent_alone_state': agent_alone_state,
                     'agent_alone_padding_state': agent_alone_padding_state,
                     'global_state': self.get_state(),
                     'action_mask': self.get_avail_actions()
-                },
-                'action_mask': self.get_avail_actions(), 
-                'to_play':to_play
                 }
             elif self.independent_obs:
                 return {
-                'observation':
-                    {
-                    'agent_state': obs_dict,
+                    'agent_state': self.get_obs(),
                     'global_state': self.get_obs(),
                     'action_mask': self.get_avail_actions(),
-                    },
-                'action_mask': self.get_avail_actions(), 
-                'to_play':to_play
                 }
             elif self.special_global_state:
                 return {
-                'observation':
-                    {
-                    'agent_state': obs_dict,
+                    'agent_state': self.get_obs(),
                     'global_state': self.get_global_special_state(),
                     'action_mask': self.get_avail_actions(),
-                    },
-                'action_mask': self.get_avail_actions(), 
-                'to_play':to_play
                 }
             else:
                 obs_list= []
                 obs_vec = self.get_obs()
-                for i in range(obs_vec.shape[0]):
+                action_mask = self.get_avail_actions()
+                global_state = self.get_state()
+                to_play =  [-1 for _ in range(self.n_agents)]
+                for i in range(self.n_agents):
                     ret = {}
-                    ret['agent_state'] = obs_vec[i] 
-                    ret['action_mask'] = self.get_avail_actions()
+                    ret['agent_state'] = obs_vec[i]
+                    ret['global_state'] = global_state
                     ret['to_play'] = to_play
                     obs_list.append(ret)
-                action_mask_list = self.get_avail_actions()
-                action_mask = np.array(action_mask_list)
-                action_mask = action_mask.reshape(-1,14).tolist()
+                # action_mask_list = self.get_avail_actions()
+                # action_mask = np.array(action_mask_list)
+                # action_mask = action_mask.reshape(-1,14).tolist()
                 return {
                 'observation':obs_list,
-                'action_mask': action_mask, 
+                'action_mask': action_mask.tolist(), 
                 'to_play':to_play
                 }
-        obs_dict2 = {}
-        obs_vec2 = self.get_obs(True)
-        for i in range(obs_vec2.shape[0]):
-            key = i
-            obs_dict2[key] = obs_vec2[i] 
-        ret_transform = {
+
+        return {
             'agent_state': {
-                ORIGINAL_AGENT: obs_dict,
-                OPPONENT_AGENT: obs_dict2
+                ORIGINAL_AGENT: self.get_obs(),
+                OPPONENT_AGENT: self.get_obs(True)
             },
             'global_state': {
                 ORIGINAL_AGENT: self.get_state(),
@@ -528,10 +500,6 @@ class SMACEnv(SC2Env, BaseEnv):
                 OPPONENT_AGENT: self.get_avail_actions(True),
             },
         }
-        action_mask_list = self.get_avail_actions()
-        action_mask = np.array(action_mask_list)
-        action_mask = action_mask.reshape(-1,14).tolist()
-        return {'observation': ret_transform, 'action_mask': action_mask, 'to_play':to_play}
 
     def _submit_actions(self, actions):
         if self.two_player:
@@ -574,7 +542,7 @@ class SMACEnv(SC2Env, BaseEnv):
         return new_action
 
     def step(self, actions, force_return_two_player=False):
-        processed_actions = self.action_helper.get_action(actions, self)
+        processed_actions = self.action_helper.get_action(list(actions.values()), self)
         # self._submit_actions(processed_actions)
         try:
             # print("Submitting actions: ", actions)
@@ -602,78 +570,47 @@ class SMACEnv(SC2Env, BaseEnv):
                 new_infos['episode_info'] = infos['episode_info']
             new_infos['fake_eval_episode_return'] = infos['fake_eval_episode_return']
             infos = new_infos
-            to_play =  [-1 for _ in range(self.n_agents)]  # Moot, for alignment with other environments
-            obs_dict = {}
-            obs_vec = self.get_obs()
-            for i in range(obs_vec.shape[0]):
-                key = i
-                obs_dict[key] = obs_vec[i] 
             if self.obs_alone:
                 agent_state, agent_alone_state, agent_alone_padding_state = self.get_obs()
-                agent_state = obs_dict
                 obs = {
                     'agent_state': agent_state,
                     'agent_alone_state': agent_alone_state,
                     'agent_alone_padding_state': agent_alone_padding_state,
                     'global_state': self.get_state(),
-                    'action_mask': self.get_avail_actions(),
+                    'action_mask': self.get_avail_actions()
                 }
             elif self.independent_obs:
-                obs_list= []
-                obs_vec = self.get_obs()
-                for i in range(obs_vec.shape[0]):
-                    ret = {}
-                    ret['agent_state'] = obs_vec[i] 
-                    ret['action_mask'] = self.get_avail_actions()
-                    ret['to_play'] = to_play
-                    obs_list.append(ret)
-                action_mask_list = self.get_avail_actions()
-                action_mask = np.array(action_mask_list)
-                action_mask = action_mask.reshape(-1,14).tolist()
                 obs = {
-                    'agent_state': obs_list,
+                    'agent_state': self.get_obs(),
                     'global_state': self.get_obs(),
-                    'action_mask': action_mask,
+                    'action_mask': self.get_avail_actions(),
                 }
             elif self.special_global_state:
-                obs_list= []
-                obs_vec = self.get_obs()
-                for i in range(obs_vec.shape[0]):
-                    ret = {}
-                    ret['agent_state'] = obs_vec[i] 
-                    ret['action_mask'] = self.get_avail_actions()
-                    ret['to_play'] = to_play
-                    obs_list.append(ret)
-                action_mask_list = self.get_avail_actions()
-                action_mask = np.array(action_mask_list)
-                action_mask = action_mask.reshape(-1,14).tolist()
                 obs = {
-                    'agent_state': obs_list,
-                    'global_state': self.get_state(),
-                    'action_mask': action_mask,
+                    'agent_state': self.get_obs(),
+                    'global_state': self.get_global_special_state(),
+                    'action_mask': self.get_avail_actions(),
                 }
             else:
                 obs_list= []
                 obs_vec = self.get_obs()
-                for i in range(obs_vec.shape[0]):
+                action_mask = self.get_avail_actions()
+                global_state = self.get_state()
+                to_play =  [-1 for _ in range(self.n_agents)]  # Moot, for alignment with other environments
+                for i in range(self.n_agents):
                     ret = {}
                     ret['agent_state'] = obs_vec[i] 
-                    ret['action_mask'] = self.get_avail_actions()
+                    ret['global_state'] = global_state
                     ret['to_play'] = to_play
                     obs_list.append(ret)
-                action_mask_list = self.get_avail_actions()
-                action_mask = np.array(action_mask_list)
-                action_mask = action_mask.reshape(-1,14).tolist()
-                obs = {
-                    'agent_state': obs_list,
-                    'global_state': self.get_state(),
-                    'action_mask': action_mask,
-                }
+                obs_transform = {'observation': obs_list, 'action_mask': action_mask.tolist(), 'to_play': to_play}
+                return self.SMACTimestep(obs=copy.deepcopy(obs_transform), reward=rewards, done=terminates, info=infos, episode_steps=self._episode_steps)
         else:
             raise NotImplementedError
-        obs_transform = {'observation': obs, 'action_mask': action_mask, 'to_play': to_play}
-        print("这一步的obs是{}".format(obs))
-        return obs_transform
+
+        return self.SMACTimestep(
+            obs=copy.deepcopy(obs), reward=rewards, done=terminates, info=infos, episode_steps=self._episode_steps
+        )
 
     def _collect_step_data(self, game_end_code, action):
         """This function is called only once at each step, no matter whether you take opponent as agent.

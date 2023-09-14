@@ -492,7 +492,7 @@ class MuZeroPolicy(Policy):
             self._mcts_collect = MCTSCtree(self._cfg)
         else:
             self._mcts_collect = MCTSPtree(self._cfg)
-        self._collect_mcts_temperature = 1
+        self._collect_mcts_temperature = 1.0
         self.collect_epsilon = 0.0
 
     def _forward_collect(
