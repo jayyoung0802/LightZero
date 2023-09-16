@@ -76,7 +76,7 @@ class MultiAgentMuZeroPolicy(MuZeroPolicy):
             network_output = self._collect_model.initial_inference(data)
             latent_state_roots, reward_roots, pred_values, policy_logits = mz_network_output_unpack(network_output)
 
-            pred_values = self.inverse_scalar_transform_handle(pred_values).detach().cpu().numpy()
+            # pred_values = self.inverse_scalar_transform_handle(pred_values).detach().cpu().numpy()  # shape（B, 1）
             latent_state_roots = latent_state_roots.detach().cpu().numpy()
             policy_logits = policy_logits.detach().cpu().numpy().tolist()
 

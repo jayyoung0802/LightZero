@@ -205,6 +205,7 @@ class MuZeroModelMLP(nn.Module):
             - latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
             - next_latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
         """
+        latent_state = latent_state[:,:256]
         next_latent_state, reward = self._dynamics(latent_state, action)
         policy_logits, value = self._prediction(next_latent_state)
         return MZNetworkOutput(value, reward, policy_logits, next_latent_state)

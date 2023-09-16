@@ -185,7 +185,9 @@ class PettingZooEnv(BaseEnv):
 
         obs, rew, done, trunc, info = self._env.step(action)
         obs_n = self._process_obs(obs)
-        rew_n = np.array([sum([rew[agent] for agent in self._agents])])
+        # rew_n = np.array([sum([rew[agent] for agent in self._agents])])
+        rew_n = np.array([rew[agent] for agent in self._agents])
+
         rew_n = rew_n.astype(np.float32)
         # collide_sum = 0
         # for i in range(self._num_agents):
@@ -291,7 +293,7 @@ class PettingZooEnv(BaseEnv):
             tmp = {}
             for k,v in ret.items():
                 tmp[k] = v[i]
-            tmp['action_mask'] = [1 for _ in range(*self._action_dim)]
+            # tmp['action_mask'] = [1 for _ in range(*self._action_dim)]
             ret_transform.append(tmp)
         return {'observation': ret_transform, 'action_mask': action_mask, 'to_play': to_play}
 

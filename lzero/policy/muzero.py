@@ -309,13 +309,13 @@ class MuZeroPolicy(Policy):
 
         # ``scalar_transform`` to transform the original value to the scaled value,
         # i.e. h(.) function in paper https://arxiv.org/pdf/1805.11593.pdf.
-        transformed_target_reward = scalar_transform(target_reward)
-        transformed_target_value = scalar_transform(target_value)
+        # transformed_target_reward = scalar_transform(target_reward)
+        # transformed_target_value = scalar_transform(target_value)
 
         # transform a scalar to its categorical_distribution. After this transformation, each scalar is
         # represented as the linear combination of its two adjacent supports.
-        target_reward_categorical = phi_transform(self.reward_support, transformed_target_reward)
-        target_value_categorical = phi_transform(self.value_support, transformed_target_value)
+        # target_reward_categorical = phi_transform(self.reward_support, transformed_target_reward)
+        # target_value_categorical = phi_transform(self.value_support, transformed_target_value)
 
         # ==============================================================
         # the core initial_inference in MuZero policy.
@@ -325,9 +325,13 @@ class MuZeroPolicy(Policy):
         # value_prefix shape: (batch_size, 10), the ``value_prefix`` at the first step is zero padding.
         latent_state, reward, value, policy_logits = mz_network_output_unpack(network_output)
 
+        agent_q, agent_q_act, total_q = value
+        policy_distribution = torch.softmax(policy_logits, dim=1)
+        value = torch.sum(agent_q * policy_distribution, axis=1)
+
         # transform the scaled value or its categorical representation to its original value,
         # i.e. h^(-1)(.) function in paper https://arxiv.org/pdf/1805.11593.pdf.
-        original_value = self.inverse_scalar_transform_handle(value)
+        # original_value = self.inverse_scalar_transform_handle(value)
 
         # Note: The following lines are just for debugging.
         predicted_rewards = []
@@ -345,7 +349,9 @@ class MuZeroPolicy(Policy):
         # calculate policy and value loss for the first step.
         # ==============================================================
         policy_loss = cross_entropy_loss(policy_logits, target_policy[:, 0])
-        value_loss = cross_entropy_loss(value, target_value_categorical[:, 0])
+        # value_loss = cross_entropy_loss(value, target_value_categorical[:, 0])
+        value_loss = torch.nn.MSELoss()(value, target_value)
+
 
         reward_loss = torch.zeros(self._cfg.batch_size, device=self._cfg.device)
         consistency_loss = torch.zeros(self._cfg.batch_size, device=self._cfg.device)

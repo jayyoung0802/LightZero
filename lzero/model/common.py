@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from ding.torch_utils import MLP, ResBlock
 from ding.utils import SequenceType
 
@@ -482,6 +483,28 @@ class PredictionNetworkMLP(nn.Module):
             # last_linear_layer_init_zero=True is beneficial for convergence speed.
             last_linear_layer_init_zero=last_linear_layer_init_zero
         )
+        self.fc_value_head_single = MLP(
+            in_channels=self.num_channels,
+            hidden_channels=fc_value_layers[0],
+            out_channels=1,
+            layer_num=len(fc_value_layers) + 1,
+            activation=activation,
+            norm_type=norm_type,
+            output_activation=False,
+            output_norm=False,
+            # last_linear_layer_init_zero=True is beneficial for convergence speed.
+            last_linear_layer_init_zero=last_linear_layer_init_zero
+        )
+        from ding.model.common import DiscreteHead
+        self.q_head = DiscreteHead(
+                256, 5, 2, activation=activation, norm_type=norm_type
+            )
+
+        self._mixer = Mixer(
+            agent_num=3,
+            state_dim=30, 
+            mixing_embed_dim=64,
+        )
 
     def forward(self, latent_state: torch.Tensor):
         """
@@ -493,8 +516,101 @@ class PredictionNetworkMLP(nn.Module):
             - policy (:obj:`torch.Tensor`): policy tensor with shape (B, action_space_size).
             - value (:obj:`torch.Tensor`): value tensor with shape (B, output_support_size).
         """
-        x_prediction_common = self.fc_prediction_common(latent_state)
-
-        value = self.fc_value_head(x_prediction_common)
+        agent_state = latent_state[:,:256]
+        global_state = latent_state[:,256:]
+        global_state = global_state[::3,]
+        x_prediction_common = self.fc_prediction_common(agent_state)
+        agent_q = self.q_head(x_prediction_common)['logit']
+        action = agent_q.argmax(dim=-1)
+        agent_q_act = torch.gather(agent_q, dim=-1, index=action.unsqueeze(-1))
+        agent_q_act = agent_q_act.squeeze(-1)
+        total_q = self._mixer(agent_q_act, global_state)
+        # value = self.fc_value_head(value)
         policy = self.fc_policy_head(x_prediction_common)
-        return policy, value
+        policy_distribution = torch.softmax(policy, dim=1)
+        values = torch.sum(agent_q * policy_distribution, axis=1)
+        return policy, values
+
+class Mixer(nn.Module):
+    """
+    Overview:
+        mixer network in QMIX, which mix up the independent q_value of each agent to a total q_value
+    Interface:
+        __init__, forward
+    """
+
+    def __init__(self, agent_num, state_dim, mixing_embed_dim, hypernet_embed=64, activation=nn.ReLU()):
+        """
+        Overview:
+            Initialize mixer network proposed in QMIX.
+        Arguments:
+            - agent_num (:obj:`int`): the number of agent
+            - state_dim(:obj:`int`): the dimension of global observation state
+            - mixing_embed_dim (:obj:`int`): the dimension of mixing state emdedding
+            - hypernet_embed (:obj:`int`): the dimension of hypernet emdedding, default to 64
+            - activation (:obj:`nn.Module`): Activation function in network, defaults to nn.ReLU().
+        """
+        super(Mixer, self).__init__()
+
+        self.n_agents = agent_num
+        self.state_dim = state_dim
+        self.embed_dim = mixing_embed_dim
+        self.act = activation
+        self.hyper_w_1 = nn.Sequential(
+            nn.Linear(self.state_dim, hypernet_embed), self.act,
+            nn.Linear(hypernet_embed, self.embed_dim * self.n_agents)
+        )
+        self.hyper_w_final = nn.Sequential(
+            nn.Linear(self.state_dim, hypernet_embed), self.act, nn.Linear(hypernet_embed, self.embed_dim)
+        )
+
+        # State dependent bias for hidden layer
+        self.hyper_b_1 = nn.Linear(self.state_dim, self.embed_dim)
+
+        # V(s) instead of a bias for the last layers
+        self.V = nn.Sequential(nn.Linear(self.state_dim, self.embed_dim), self.act, nn.Linear(self.embed_dim, 1))
+        # self.V = MLP(
+        #     in_channels=30,
+        #     hidden_channels=64,
+        #     out_channels=601,
+        #     layer_num=2,
+        #     activation=activation,
+        #     norm_type=None,
+        #     output_activation=False,
+        #     output_norm=False,
+        #     last_linear_layer_init_zero=True,
+        # )
+
+    def forward(self, agent_qs, states):
+        """
+        Overview:
+            forward computation graph of pymarl mixer network
+        Arguments:
+            - agent_qs (:obj:`torch.FloatTensor`): the independent q_value of each agent
+            - states (:obj:`torch.FloatTensor`): the emdedding vector of global state
+        Returns:
+            - q_tot (:obj:`torch.FloatTensor`): the total mixed q_value
+        Shapes:
+            - agent_qs (:obj:`torch.FloatTensor`): :math:`(B, N)`, where B is batch size and N is agent_num
+            - states (:obj:`torch.FloatTensor`): :math:`(B, M)`, where M is embedding_size
+            - q_tot (:obj:`torch.FloatTensor`): :math:`(B, )`
+        """
+        bs = agent_qs.shape[0]//self.n_agents
+        states = states.reshape(-1, self.state_dim)
+        agent_qs = agent_qs.view(-1, 1, self.n_agents)
+        # First layer
+        w1 = torch.abs(self.hyper_w_1(states))
+        b1 = self.hyper_b_1(states)
+        w1 = w1.view(-1, self.n_agents, self.embed_dim)
+        b1 = b1.view(-1, 1, self.embed_dim)
+        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
+        # Second layer
+        w_final = torch.abs(self.hyper_w_final(states))
+        w_final = w_final.view(-1, self.embed_dim, 1)
+        # State-dependent bias
+        v = self.V(states).view(-1, 1, 1)
+        # Compute final output
+        y = torch.bmm(hidden, w_final) + v
+        # Reshape and return
+        q_tot = y.view((bs))
+        return q_tot
