@@ -187,6 +187,7 @@ class PettingZooEnv(BaseEnv):
         obs_n = self._process_obs(obs)
         rew_n = np.array([sum([rew[agent] for agent in self._agents])])
         rew_n = rew_n.astype(np.float32)
+        rew_independent = [rew[agent] for agent in self._agents]
         # collide_sum = 0
         # for i in range(self._num_agents):
         #     collide_sum += info['n'][i][1]
@@ -213,7 +214,7 @@ class PettingZooEnv(BaseEnv):
                 self.frame_list[0].save('out.gif', save_all=True, append_images=self.frame_list[1:], duration=3, loop=0)
         # for agent in rew:
         #     rew[agent] = to_ndarray([rew[agent]])
-        return BaseEnvTimestep(obs_n, rew_n, done_n, info)
+        return BaseEnvTimestep(obs_n, rew_independent, done_n, info)
 
     def enable_save_replay(self, replay_path: Optional[str] = None) -> None:
         if replay_path is None:
