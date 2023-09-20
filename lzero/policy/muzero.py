@@ -320,6 +320,7 @@ class MuZeroPolicy(Policy):
         # ==============================================================
         # the core initial_inference in MuZero policy.
         # ==============================================================
+        # 这里的obs_batch是环境的返回值，有agent_state和global_state
         network_output = self._learn_model.initial_inference(obs_batch)
 
         # value_prefix shape: (batch_size, 10), the ``value_prefix`` at the first step is zero padding.

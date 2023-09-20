@@ -18,7 +18,8 @@ class MuZeroModelMLP(nn.Module):
         self,
         observation_shape: int = 2,
         action_space_size: int = 6,
-        latent_state_dim: int = 256,
+        # 这里把latent_state_dim改为512
+        latent_state_dim: int = 512,
         fc_reward_layers: SequenceType = [32],
         fc_value_layers: SequenceType = [32],
         fc_policy_layers: SequenceType = [32],
@@ -173,7 +174,9 @@ class MuZeroModelMLP(nn.Module):
             - latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
         """
         batch_size = get_shape0(obs)
+        # 这里obs依旧是环境返回的词典
         latent_state = self._representation(obs)
+        # 重点就是这个表示网络，将字典转换为tensor(agent的latent_state)
         policy_logits, value = self._prediction(latent_state)
         return MZNetworkOutput(
             value,
@@ -205,6 +208,7 @@ class MuZeroModelMLP(nn.Module):
             - latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
             - next_latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
         """
+        # 这里传入的·latent_state已经是我们之前修改过的复合状态了
         next_latent_state, reward = self._dynamics(latent_state, action)
         policy_logits, value = self._prediction(next_latent_state)
         return MZNetworkOutput(value, reward, policy_logits, next_latent_state)
@@ -221,7 +225,9 @@ class MuZeroModelMLP(nn.Module):
              - obs (:obj:`torch.Tensor`): :math:`(B, obs_shape)`, where B is batch_size.
             - latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
          """
+        # 这里的observation就是环境返回的obs，dict形式
         latent_state = self.representation_network(observation)
+
         if self.state_norm:
             latent_state = renormalize(latent_state)
         return latent_state
@@ -240,7 +246,9 @@ class MuZeroModelMLP(nn.Module):
             - policy_logits (:obj:`torch.Tensor`): :math:`(B, action_dim)`, where B is batch_size.
             - value (:obj:`torch.Tensor`): :math:`(B, value_support_size)`, where B is batch_size.
         """
+        # 前者agent，后者global
         policy_logits, value = self.prediction_network(latent_state)
+
         return policy_logits, value
 
     def _dynamics(self, latent_state: torch.Tensor, action: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -278,6 +286,7 @@ class MuZeroModelMLP(nn.Module):
             # transform action to torch.int64
             action = action.long()
             action_one_hot.scatter_(1, action, 1)
+            # 这里将[24,1]的每个agent的action转换为[24,5]的one-hot向量
             action_encoding = action_one_hot
         elif self.discrete_action_encoding_type == 'not_one_hot':
             action_encoding = action / self.action_space_size
@@ -289,8 +298,9 @@ class MuZeroModelMLP(nn.Module):
         action_encoding = action_encoding.to(latent_state.device).float()
         # state_action_encoding shape: (batch_size, latent_state[1] + action_dim]) or
         # (batch_size, latent_state[1] + action_space_size]) depending on the discrete_action_encoding_type.
+        # 这一步将[24,5]的action和[24,512]的latent_state拼接到一起，得到[24,517]的state_action_encoding 
         state_action_encoding = torch.cat((latent_state, action_encoding), dim=1)
-
+        # global的next_latent_state需要所有agent的动作
         next_latent_state, reward = self.dynamics_network(state_action_encoding)
 
         if not self.state_norm:

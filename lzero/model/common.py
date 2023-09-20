@@ -277,6 +277,7 @@ class RepresentationNetworkMLP(nn.Module):
             - x (:obj:`torch.Tensor`): :math:`(B, N)`, where B is batch size, N is the length of vector observation.
             - output (:obj:`torch.Tensor`): :math:`(B, hidden_channels)`, where B is batch size.
         """
+        # 就是过了上面一层mlp
         return self.fc_representation(x)
 
 
@@ -444,8 +445,21 @@ class PredictionNetworkMLP(nn.Module):
         self.num_channels = num_channels
 
         # ******* common backbone ******
-        self.fc_prediction_common = MLP(
-            in_channels=self.num_channels,
+        self.fc_prediction_common_agent = MLP(
+            in_channels=int(self.num_channels/2),
+            hidden_channels=self.num_channels,
+            out_channels=self.num_channels,
+            layer_num=common_layer_num,
+            activation=activation,
+            norm_type=norm_type,
+            output_activation=True,
+            output_norm=True,
+            # last_linear_layer_init_zero=False is important for convergence
+            last_linear_layer_init_zero=False,
+        )
+
+        self.fc_prediction_common_global = MLP(
+            in_channels=int(self.num_channels/2),
             hidden_channels=self.num_channels,
             out_channels=self.num_channels,
             layer_num=common_layer_num,
@@ -493,8 +507,13 @@ class PredictionNetworkMLP(nn.Module):
             - policy (:obj:`torch.Tensor`): policy tensor with shape (B, action_space_size).
             - value (:obj:`torch.Tensor`): value tensor with shape (B, output_support_size).
         """
-        x_prediction_common = self.fc_prediction_common(latent_state)
-
-        value = self.fc_value_head(x_prediction_common)
-        policy = self.fc_policy_head(x_prediction_common)
+        latent_state_agent = latent_state[:, :256]
+        latent_state_global = latent_state[:, 256:]
+        x_prediction_common_agent = self.fc_prediction_common_agent(latent_state_agent)
+        x_prediction_common_global = self.fc_prediction_common_global(latent_state_global)
+        # x_prediction_common = self.fc_prediction_common(latent_state)
+        # x_prediction_agent = x_prediction_common[:24, :] 
+        # x_prediction_global = x_prediction_common[24:, :]
+        value = self.fc_value_head(x_prediction_common_global)
+        policy = self.fc_policy_head(x_prediction_common_agent)
         return policy, value
