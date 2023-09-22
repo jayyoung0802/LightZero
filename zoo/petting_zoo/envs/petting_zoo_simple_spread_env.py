@@ -214,7 +214,7 @@ class PettingZooEnv(BaseEnv):
                 self.frame_list[0].save('out.gif', save_all=True, append_images=self.frame_list[1:], duration=3, loop=0)
         # for agent in rew:
         #     rew[agent] = to_ndarray([rew[agent]])
-        return BaseEnvTimestep(obs_n, rew_independent, done_n, info)
+        return BaseEnvTimestep(obs_n, rew_n, done_n, info)
 
     def enable_save_replay(self, replay_path: Optional[str] = None) -> None:
         if replay_path is None:

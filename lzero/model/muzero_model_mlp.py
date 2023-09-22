@@ -111,9 +111,20 @@ class MuZeroModelMLP(nn.Module):
         else:
             self.representation_network = state_encoder
 
-        self.dynamics_network = DynamicsNetwork(
+        self.agent_dynamics_network = DynamicsNetwork(
             action_encoding_dim=self.action_encoding_dim,
             num_channels=self.latent_state_dim + self.action_encoding_dim,
+            common_layer_num=2,
+            fc_reward_layers=fc_reward_layers,
+            output_support_size=self.reward_support_size,
+            last_linear_layer_init_zero=self.last_linear_layer_init_zero,
+            norm_type=norm_type,
+            res_connection_in_dynamics=self.res_connection_in_dynamics,
+        )
+
+        self.global_dynamics_network = DynamicsNetwork(
+            action_encoding_dim=self.action_encoding_dim*3,
+            num_channels=self.latent_state_dim + self.action_encoding_dim*3,
             common_layer_num=2,
             fc_reward_layers=fc_reward_layers,
             output_support_size=self.reward_support_size,
@@ -147,6 +158,10 @@ class MuZeroModelMLP(nn.Module):
                 activation,
                 nn.Linear(self.pred_hid, self.pred_out),
             )
+
+        from ding.model.common import FCEncoder
+        self.encoder_1 = FCEncoder(obs_shape=512, hidden_size_list=[256, 256], activation=nn.ReLU(), norm_type=None)
+        self.encoder_2 = FCEncoder(obs_shape=1536, hidden_size_list=[512, 256, 256], activation=nn.ReLU(), norm_type=None)
 
     def initial_inference(self, obs: torch.Tensor) -> MZNetworkOutput:
         """
@@ -289,9 +304,18 @@ class MuZeroModelMLP(nn.Module):
         action_encoding = action_encoding.to(latent_state.device).float()
         # state_action_encoding shape: (batch_size, latent_state[1] + action_dim]) or
         # (batch_size, latent_state[1] + action_space_size]) depending on the discrete_action_encoding_type.
-        state_action_encoding = torch.cat((latent_state, action_encoding), dim=1)
+        agent_state = self.encoder_1(latent_state)
+        global_state = self.encoder_2(latent_state.reshape(8, -1))
+        state_action_encoding = torch.cat((agent_state, action_encoding), dim=1)
+        global_state_action_union = torch.cat((global_state, action_encoding.reshape(8, -1)), dim=1)
 
-        next_latent_state, reward = self.dynamics_network(state_action_encoding)
+        next_latent_state, _ = self.agent_dynamics_network(state_action_encoding)
+        next_global_latent_state, reward = self.global_dynamics_network(global_state_action_union)
+
+        next_global_latent_state = next_global_latent_state.unsqueeze(1)
+        next_global_latent_state = next_global_latent_state.expand(-1, 3, -1)
+        next_global_latent_state = next_global_latent_state.reshape(-1, 256)
+        next_latent_state = torch.cat((next_latent_state, next_global_latent_state), dim=1)
 
         if not self.state_norm:
             return next_latent_state, reward

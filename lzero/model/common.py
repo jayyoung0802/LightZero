@@ -444,8 +444,20 @@ class PredictionNetworkMLP(nn.Module):
         self.num_channels = num_channels
 
         # ******* common backbone ******
-        self.fc_prediction_common = MLP(
+        self.agent_fc_prediction_common = MLP(
             in_channels=self.num_channels,
+            hidden_channels=self.num_channels,
+            out_channels=self.num_channels,
+            layer_num=common_layer_num,
+            activation=activation,
+            norm_type=norm_type,
+            output_activation=True,
+            output_norm=True,
+            # last_linear_layer_init_zero=False is important for convergence
+            last_linear_layer_init_zero=False,
+        )
+        self.global_fc_prediction_common = MLP(
+            in_channels=512,
             hidden_channels=self.num_channels,
             out_channels=self.num_channels,
             layer_num=common_layer_num,
@@ -493,8 +505,11 @@ class PredictionNetworkMLP(nn.Module):
             - policy (:obj:`torch.Tensor`): policy tensor with shape (B, action_space_size).
             - value (:obj:`torch.Tensor`): value tensor with shape (B, output_support_size).
         """
-        x_prediction_common = self.fc_prediction_common(latent_state)
+        agent_state = latent_state[:, :256]
 
-        value = self.fc_value_head(x_prediction_common)
-        policy = self.fc_policy_head(x_prediction_common)
+        global_prediction_common = self.global_fc_prediction_common(latent_state)
+        agent_prediction_common = self.agent_fc_prediction_common(agent_state)
+
+        value = self.fc_value_head(global_prediction_common)
+        policy = self.fc_policy_head(agent_prediction_common)
         return policy, value
