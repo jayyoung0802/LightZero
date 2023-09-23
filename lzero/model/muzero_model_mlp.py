@@ -122,6 +122,26 @@ class MuZeroModelMLP(nn.Module):
             norm_type=norm_type,
             res_connection_in_dynamics=self.res_connection_in_dynamics,
         )
+        self.agent_dynamics_network = DynamicsNetwork(
+            action_encoding_dim=self.action_encoding_dim,
+            num_channels=int(self.latent_state_dim/2) + self.action_encoding_dim,
+            common_layer_num=2,
+            fc_reward_layers=fc_reward_layers,
+            output_support_size=self.reward_support_size,
+            last_linear_layer_init_zero=self.last_linear_layer_init_zero,
+            norm_type=norm_type,
+            res_connection_in_dynamics=self.res_connection_in_dynamics,
+        )
+        self.global_dynamics_network = DynamicsNetwork(
+            action_encoding_dim=self.action_encoding_dim,
+            num_channels=self.latent_state_dim + self.action_encoding_dim,
+            common_layer_num=2,
+            fc_reward_layers=fc_reward_layers,
+            output_support_size=self.reward_support_size,
+            last_linear_layer_init_zero=self.last_linear_layer_init_zero,
+            norm_type=norm_type,
+            res_connection_in_dynamics=self.res_connection_in_dynamics,
+        )
 
         self.prediction_network = PredictionNetworkMLP(
             action_space_size=action_space_size,
@@ -131,6 +151,10 @@ class MuZeroModelMLP(nn.Module):
             output_support_size=self.value_support_size,
             last_linear_layer_init_zero=self.last_linear_layer_init_zero,
             norm_type=norm_type
+        )
+        self.globalconvertor = GlobalConvertor(
+        input_channels=self.latent_state_dim,
+        output_channels = int(self.latent_state_dim/2)
         )
 
         if self.self_supervised_learning_loss:
@@ -208,9 +232,16 @@ class MuZeroModelMLP(nn.Module):
             - latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
             - next_latent_state (:obj:`torch.Tensor`): :math:`(B, H)`, where B is batch_size, H is the dimension of latent state.
         """
-        # 这里传入的·latent_state已经是我们之前修改过的复合状态了
+        # 这里传入的latent_state已经是我们之前修改过的复合状态了
         next_latent_state, reward = self._dynamics(latent_state, action)
+        # x = next_latent_state[:,256:]
+        # grouped_mean = x.reshape(int(x.size(0)/ 3) , 3, -1).mean(dim=1, keepdim=True)
+        # # 将均值复制成三个张量
+        # equalized_tensors = grouped_mean.expand(-1, 3, -1)
+        # # 将结果重新展平为与输入相同的形状
+        # output = equalized_tensors.contiguous().view(x.size())
         policy_logits, value = self._prediction(next_latent_state)
+        # next_latent_state[:,256:] = output
         return MZNetworkOutput(value, reward, policy_logits, next_latent_state)
 
     def _representation(self, observation: torch.Tensor) -> Tuple[torch.Tensor]:
@@ -300,9 +331,18 @@ class MuZeroModelMLP(nn.Module):
         # (batch_size, latent_state[1] + action_space_size]) depending on the discrete_action_encoding_type.
         # 这一步将[24,5]的action和[24,512]的latent_state拼接到一起，得到[24,517]的state_action_encoding 
         state_action_encoding = torch.cat((latent_state, action_encoding), dim=1)
+        agent_action_encoding = torch.cat((latent_state[:,:256], action_encoding), dim=1)
+        global_action_encoding = torch.cat((latent_state[:,256:], action_encoding), dim=1)
         # global的next_latent_state需要所有agent的动作
-        next_latent_state, reward = self.dynamics_network(state_action_encoding)
-
+        next_latent_state_agent, reward = self.agent_dynamics_network(agent_action_encoding)
+        next_latent_state_global, reward = self.global_dynamics_network(state_action_encoding)
+        next_latent_state_global = self.globalconvertor(next_latent_state_global)
+        # next_latent_state_global = next_latent_state_global.reshape(int(next_latent_state_global.size(0)/ 3) , 3, -1).mean(dim=1, keepdim=True)
+        # # 将均值复制成三个张量
+        # next_latent_state_global = next_latent_state_global.expand(-1, 3, -1)
+        # # 将结果重新展平为与输入相同的形状
+        # next_latent_state_global = next_latent_state_global.contiguous().view(next_latent_state_agent.size())
+        next_latent_state = torch.concat((next_latent_state_agent, next_latent_state_global),dim=1)
         if not self.state_norm:
             return next_latent_state, reward
         else:
@@ -446,12 +486,14 @@ class DynamicsNetwork(nn.Module):
             x = self.fc_dynamics_1(state_action_encoding)
             # the residual link: add the latent_state to the state_action encoding
             next_latent_state = x + latent_state
+
             next_latent_state_encoding = self.fc_dynamics_2(next_latent_state)
         else:
             next_latent_state = self.fc_dynamics(state_action_encoding)
             next_latent_state_encoding = next_latent_state
 
         reward = self.fc_reward_head(next_latent_state_encoding)
+
 
         return next_latent_state, reward
 
@@ -460,3 +502,18 @@ class DynamicsNetwork(nn.Module):
 
     def get_reward_mean(self) -> float:
         return get_reward_mean(self)
+
+
+class GlobalConvertor(nn.Module):
+    def __init__(self,
+        input_channels: int = 512,
+        output_channels: int = 256, 
+        ):
+        super(GlobalConvertor, self).__init__()
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.linear = nn.Linear(input_channels, output_channels)
+
+    def forward(self, x):
+        x = self.linear(x)
+        return x
