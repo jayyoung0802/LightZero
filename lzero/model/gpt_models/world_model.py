@@ -488,10 +488,12 @@ class WorldModel(nn.Module):
         elif n > self.env_num and buffer_action is not None:
             # 训练时计算 target value/
             # [192, 16, 64] -> [32, 6, 16, 64]
+            buffer_action = np.array(buffer_action)
             latent_state = latent_state.contiguous().view(buffer_action.shape[0], -1, num_observations_tokens, self.obs_per_embdding_dim)  # (BL, K) for unroll_step=1
 
             latent_state = latent_state[:, :-1, :]
             buffer_action = torch.from_numpy(buffer_action).to(latent_state.device)
+            import pdb;pdb.set_trace()
             act_tokens = rearrange(buffer_action, 'b l -> b l 1')
 
             # 选择每个样本的最后一步
